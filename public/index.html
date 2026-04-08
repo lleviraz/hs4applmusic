@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0d0d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Hitster &#9834; Apple Music</title>
+  <style>
+    /* ── Reset & tokens ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0d0d0d;
+      --surface: #1c1c1e;
+      --raised:  #2c2c2e;
+      --accent:  #fc3c44;   /* Apple Music red */
+      --accent2: #ff6b6b;
+      --text:    #f5f5f7;
+      --muted:   #8e8e93;
+      --radius:  18px;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100dvh;
+      position: relative;
+    }
+
+    /* ── State visibility ───────────────────────────────────── */
+    section { display: none; }
+    body[data-state="scanning"] #s-scanning { display: flex; }
+    body[data-state="loading"]  #s-loading  { display: flex; }
+    body[data-state="playing"]  #s-playing  { display: flex; }
+    body[data-state="revealed"] #s-playing  { display: flex; }
+    body[data-state="error"]    #s-error    { display: flex; }
+
+    /* ── Shared layout ──────────────────────────────────────── */
+    section {
+      position: absolute;
+      inset: 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px calc(24px + var(--safe-bottom));
+    }
+
+    /* ── Toast ──────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: calc(32px + var(--safe-bottom));
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--raised);
+      color: var(--text);
+      padding: 12px 20px;
+      border-radius: 99px;
+      font-size: 14px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s, transform 0.25s;
+      z-index: 100;
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── SCANNING state ─────────────────────────────────────── */
+    #s-scanning {
+      background: #000;
+      padding: 0;
+    }
+
+    #cam {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* viewfinder overlay */
+    .vf-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(
+        to bottom,
+        rgba(0,0,0,.55) 0%,
+        transparent 30%,
+        transparent 70%,
+        rgba(0,0,0,.55) 100%
+      );
+    }
+
+    .vf-frame {
+      position: relative;
+      width: min(260px, 60vw);
+      aspect-ratio: 1;
+    }
+
+    /* animated corner brackets */
+    .vf-frame::before,
+    .vf-frame::after,
+    .vf-frame > span::before,
+    .vf-frame > span::after {
+      content: '';
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-color: var(--accent);
+      border-style: solid;
+    }
+    .vf-frame::before  { top: 0;    left: 0;    border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+    .vf-frame::after   { top: 0;    right: 0;   border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+    .vf-frame > span::before { bottom: 0; left: 0;  border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+    .vf-frame > span::after  { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+    @keyframes pulse-frame {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .4; }
+    }
+    .vf-frame { animation: pulse-frame 2s ease-in-out infinite; }
+
+    .vf-hint {
+      margin-top: 24px;
+      font-size: 15px;
+      color: rgba(255,255,255,.85);
+      letter-spacing: .2px;
+      text-align: center;
+    }
+
+    .vf-title {
+      position: absolute;
+      top: 52px;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -.3px;
+    }
+    .vf-logo {
+      font-size: 22px;
+      margin-right: 4px;
+    }
+
+    #qr-canvas { display: none; }
+
+    /* ── LOADING state ──────────────────────────────────────── */
+    #s-loading { gap: 20px; }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(255,255,255,.12);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    #loading-url {
+      font-size: 12px;
+      color: var(--muted);
+      max-width: 280px;
+      text-align: center;
+      word-break: break-all;
+    }
+
+    /* ── PLAYING / REVEALED state ───────────────────────────── */
+    #s-playing {
+      gap: 0;
+      justify-content: flex-start;
+      padding-top: max(52px, env(safe-area-inset-top, 52px));
+      overflow-y: auto;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+
+    /* album art */
+    .art-wrap {
+      position: relative;
+      width: min(240px, 70vw);
+      aspect-ratio: 1;
+      margin-bottom: 28px;
+    }
+
+    #album-art {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: var(--radius);
+      display: block;
+    }
+
+    .art-glow {
+      position: absolute;
+      inset: -12px;
+      border-radius: calc(var(--radius) + 12px);
+      background: radial-gradient(ellipse at center, var(--accent) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity .6s ease;
+      z-index: -1;
+      filter: blur(18px);
+    }
+    body[data-state="playing"]  .art-glow,
+    body[data-state="revealed"] .art-glow { opacity: .35; }
+
+    /* track info */
+    .track-title {
+      font-size: 22px;
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.2;
+      margin-bottom: 6px;
+      letter-spacing: -.4px;
+    }
+
+    .track-artist {
+      font-size: 16px;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    /* progress bar */
+    .progress-wrap {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .progress-bar {
+      flex: 1;
+      height: 4px;
+      background: var(--raised);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width .5s linear;
+    }
+
+    .time-label {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      min-width: 28px;
+    }
+
+    .play-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: opacity .15s;
+    }
+    .play-btn:active { opacity: .7; }
+    #play-icon  { display: block; }
+    #pause-icon { display: none; }
+    body.playing #play-icon  { display: none; }
+    body.playing #pause-icon { display: block; }
+
+    /* no-preview banner */
+    #no-preview {
+      display: none;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    /* year section */
+    .year-section {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    /* reveal button — shown in "playing" state */
+    #btn-reveal {
+      display: none;
+      padding: 14px 32px;
+      background: var(--surface);
+      border: 1.5px solid rgba(255,255,255,.12);
+      border-radius: 99px;
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    #btn-reveal:active { background: var(--raised); }
+    body[data-state="playing"] #btn-reveal { display: block; }
+
+    /* year display — shown in "revealed" state */
+    .year-display {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .year-label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+    #year-number {
+      font-size: 72px;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--accent);
+      letter-spacing: -3px;
+    }
+
+    @keyframes year-pop {
+      0%   { transform: scale(.6); opacity: 0; }
+      60%  { transform: scale(1.08); }
+      100% { transform: scale(1);   opacity: 1; }
+    }
+    .year-display.animate { animation: year-pop .4s cubic-bezier(.34,1.56,.64,1) forwards; }
+    body[data-state="revealed"] .year-display { display: flex; }
+    body[data-state="revealed"] #btn-reveal   { display: none; }
+
+    /* action buttons */
+    .actions {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 16px;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: opacity .15s;
+    }
+    .btn-primary:active { opacity: .8; }
+
+    .btn-secondary {
+      width: 100%;
+      padding: 15px;
+      background: transparent;
+      border: 1.5px solid rgba(255,255,255,.15);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-secondary:active { background: var(--surface); }
+
+    /* ── ERROR state ────────────────────────────────────────── */
+    #s-error {
+      gap: 16px;
+      text-align: center;
+    }
+    .error-icon { font-size: 48px; }
+    #error-msg  { color: var(--muted); font-size: 15px; max-width: 280px; }
+  </style>
+</head>
+<body data-state="scanning">
+
+  <!-- SCANNING -->
+  <section id="s-scanning">
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="qr-canvas"></canvas>
+    <div class="vf-overlay">
+      <div class="vf-title">
+        <span class="vf-logo">&#9834;</span> Hitster &times; Apple Music
+      </div>
+      <div class="vf-frame"><span></span></div>
+      <p class="vf-hint">Point at a Hitster card QR code</p>
+    </div>
+  </section>
+
+  <!-- LOADING -->
+  <section id="s-loading">
+    <div class="spinner"></div>
+    <p style="color:var(--muted);font-size:15px;">Looking up song&hellip;</p>
+    <p id="loading-url"></p>
+  </section>
+
+  <!-- PLAYING / REVEALED -->
+  <section id="s-playing">
+    <div class="card">
+      <div class="art-wrap">
+        <img id="album-art" src="" alt="">
+        <div class="art-glow"></div>
+      </div>
+
+      <p class="track-title" id="track-title">—</p>
+      <p class="track-artist" id="track-artist">—</p>
+
+      <div class="progress-wrap">
+        <button class="play-btn" id="play-pause" aria-label="Play/Pause">
+          <svg id="play-icon"  width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <svg id="pause-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        </button>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <span class="time-label" id="time-label">0:30</span>
+      </div>
+      <p id="no-preview">Preview unavailable</p>
+
+      <div class="year-section">
+        <button id="btn-reveal">Reveal Year</button>
+        <div class="year-display" id="year-display">
+          <span class="year-label">Released</span>
+          <span id="year-number">—</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" id="btn-apple-music">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm-.5 14.5v-9l7 4.5-7 4.5z"/></svg>
+          Open in Apple Music
+        </button>
+        <button class="btn-secondary" id="btn-next">Scan Next Card</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ERROR -->
+  <section id="s-error">
+    <div class="error-icon">&#128265;</div>
+    <p id="error-msg">Something went wrong.</p>
+    <button class="btn-secondary" id="btn-retry" style="max-width:220px;">Try Again</button>
+  </section>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <!-- Audio (hidden) -->
+  <audio id="audio" preload="none"></audio>
+
+  <!-- jsQR fallback for browsers without BarcodeDetector -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
