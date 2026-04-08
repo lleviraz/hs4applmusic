@@ -6,8 +6,43 @@
  * preview and links to Apple Music. Zero backend, zero API keys.
  */
 
-// ── CORS proxy ─────────────────────────────────────────────────────────────
-const PROXY = 'https://api.allorigins.win/get?url=';
+// ── CORS proxy helpers ──────────────────────────────────────────────────────
+// Each entry: { prefix, type }
+//   type 'allorigins' → response is JSON { status:{url}, contents }
+//   type 'direct'     → response body IS the fetched page (transparent proxy)
+const PROXIES = [
+  { prefix: 'https://api.allorigins.win/get?url=',           type: 'allorigins' },
+  { prefix: 'https://corsproxy.io/?',                        type: 'direct'     },
+  { prefix: 'https://api.codetabs.com/v1/proxy?quest=',      type: 'direct'     },
+];
+
+/**
+ * Fetch a URL through the first working CORS proxy.
+ * Returns { finalUrl, body } where body is the raw text of the fetched page
+ * and finalUrl is the URL after redirects (only known for allorigins).
+ */
+async function proxyGet(targetUrl) {
+  let lastErr;
+  for (const proxy of PROXIES) {
+    try {
+      const res = await fetch(proxy.prefix + encodeURIComponent(targetUrl));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (proxy.type === 'allorigins') {
+        const json = await res.json();
+        if (!json.contents) throw new Error('empty allorigins response');
+        return { finalUrl: json.status?.url ?? targetUrl, body: json.contents };
+      } else {
+        const body = await res.text();
+        if (!body) throw new Error('empty proxy response');
+        return { finalUrl: targetUrl, body };
+      }
+    } catch (e) {
+      console.warn(`[proxy failed] ${proxy.prefix}`, e.message);
+      lastErr = e;
+    }
+  }
+  throw new Error('All proxies failed — check your connection and try again.');
+}
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const cam          = document.getElementById('cam');
@@ -194,17 +229,15 @@ async function lookupTrack(rawUrl) {
     }
   }
 
-  // ② Resolve Hitster / Spotify redirect via CORS proxy
-  const proxyUrl = PROXY + encodeURIComponent(url);
+  // ② Resolve Hitster / Spotify redirect via CORS proxy (tries multiple proxies)
   let res1;
   try {
-    res1 = await fetch(proxyUrl).then(r => r.json());
+    res1 = await proxyGet(url);
   } catch (e) {
-    throw new Error('Network error — check your connection and try again.');
+    throw new Error(e.message);
   }
 
-  const finalUrl = res1?.status?.url ?? '';
-  const body1    = res1?.contents ?? '';
+  const { finalUrl, body: body1 } = res1;
 
   // ③ Extract Spotify track ID from final URL or page HTML
   let trackId = extractSpotifyId(finalUrl) || extractSpotifyId(body1);
@@ -217,11 +250,11 @@ async function lookupTrack(rawUrl) {
   const spotifyUrl = `https://open.spotify.com/track/${trackId}`;
   let res2;
   try {
-    res2 = await fetch(PROXY + encodeURIComponent(spotifyUrl)).then(r => r.json());
+    res2 = await proxyGet(spotifyUrl);
   } catch (e) {
     throw new Error('Could not reach Spotify metadata. Try again.');
   }
-  const html = res2?.contents ?? '';
+  const html = res2.body;
 
   const title  = parseMeta(html, 'og:title')       || '';
   const desc   = parseMeta(html, 'og:description') || '';
@@ -246,10 +279,8 @@ async function lookupTrack(rawUrl) {
   } catch (_) {
     // Fall back through proxy
     try {
-      const r = await fetch(
-        PROXY + encodeURIComponent(`https://itunes.apple.com/search?term=${q}&entity=song&limit=10&media=music`)
-      ).then(r => r.json());
-      itunesData = JSON.parse(r.contents);
+      const r = await proxyGet(`https://itunes.apple.com/search?term=${q}&entity=song&limit=10&media=music`);
+      itunesData = JSON.parse(r.body);
     } catch (e) {
       // Non-fatal: show info without preview
       itunesData = { results: [] };
