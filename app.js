@@ -17,31 +17,45 @@ const PROXIES = [
 ];
 
 /**
- * Fetch a URL through the first working CORS proxy.
- * Returns { finalUrl, body } where body is the raw text of the fetched page
- * and finalUrl is the URL after redirects (only known for allorigins).
+ * Fetch a URL, trying direct fetch first (works if target has CORS headers),
+ * then falling through a chain of public CORS proxies.
+ * Returns { finalUrl, body }.
  */
 async function proxyGet(targetUrl) {
-  let lastErr;
+  // ① Try direct fetch — works if the target sends Access-Control-Allow-Origin
+  try {
+    const res = await fetch(targetUrl, { mode: 'cors' });
+    if (res.ok) {
+      const body = await res.text();
+      if (body) return { finalUrl: res.url, body };
+    }
+  } catch (e) {
+    console.log('[direct fetch failed]', e.message);
+  }
+
+  // ② Try each CORS proxy in sequence
   for (const proxy of PROXIES) {
     try {
       const res = await fetch(proxy.prefix + encodeURIComponent(targetUrl));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (proxy.type === 'allorigins') {
         const json = await res.json();
-        if (!json.contents) throw new Error('empty allorigins response');
+        if (!json.contents) throw new Error('empty response');
         return { finalUrl: json.status?.url ?? targetUrl, body: json.contents };
       } else {
         const body = await res.text();
-        if (!body) throw new Error('empty proxy response');
+        if (!body) throw new Error('empty response');
         return { finalUrl: targetUrl, body };
       }
     } catch (e) {
       console.warn(`[proxy failed] ${proxy.prefix}`, e.message);
-      lastErr = e;
     }
   }
-  throw new Error('All proxies failed — check your connection and try again.');
+
+  // All methods failed
+  const err = new Error('PROXY_FAILED');
+  err.proxyFailed = true;
+  throw err;
 }
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -59,6 +73,7 @@ let scanLoop       = null;     // rAF id or interval id
 let scanActive     = false;
 let lastScan       = 0;        // throttle timestamp
 let currentTrack   = null;     // resolved track data
+let lastDetectedUrl = null;    // raw QR URL for manual fallback
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function setState(name) {
@@ -198,12 +213,17 @@ async function startScanning() {
 function onQRDetected(raw) {
   stopCamera();
   const url = raw.trim();
+  lastDetectedUrl = url;
   console.log('[QR detected]', url);
   document.getElementById('loading-url').textContent = url;
   setState('loading');
   lookupTrack(url).catch(err => {
     console.error('[lookupTrack error]', err, '| raw QR:', url);
-    showError(err.message || 'Could not load track. Please try again.');
+    if (err.proxyFailed) {
+      showProxyFailed(url);
+    } else {
+      showError(err.message || 'Could not load track. Please try again.');
+    }
   });
 }
 
@@ -405,9 +425,39 @@ function renderTrack(track) {
 // ── Error screen ─────────────────────────────────────────────────────────────
 function showError(msg) {
   document.getElementById('error-msg').textContent = msg;
+  document.getElementById('s-proxy-failed').style.display = 'none';
   teardownAudio();
   setState('error');
 }
+
+function showProxyFailed(cardUrl) {
+  teardownAudio();
+  // Populate the proxy-failed screen with the card URL
+  const link = document.getElementById('pf-card-link');
+  const display = cardUrl.startsWith('http') ? cardUrl : 'https://' + cardUrl;
+  link.href = display;
+  link.textContent = display;
+  document.getElementById('spotify-paste').value = '';
+  setState('proxy-failed');
+}
+
+window.submitManualSpotify = function submitManualSpotify() {
+  const input = document.getElementById('spotify-paste').value.trim();
+  if (!input) return;
+  // Accept full Spotify URL or just a track ID
+  const trackId = extractSpotifyId(input) ||
+    (input.match(/^[\w]{22}$/) ? input : null); // 22-char base62 track IDs
+  if (!trackId) {
+    showToast('Paste a Spotify track link, e.g. open.spotify.com/track/...');
+    return;
+  }
+  const spotifyUrl = `https://open.spotify.com/track/${trackId}`;
+  document.getElementById('loading-url').textContent = spotifyUrl;
+  setState('loading');
+  lookupTrack(spotifyUrl).catch(err => {
+    showError(err.message || 'Could not load track.');
+  });
+};
 
 // ── Event listeners ──────────────────────────────────────────────────────────
 document.getElementById('btn-reveal').addEventListener('click', () => {
@@ -427,6 +477,11 @@ document.getElementById('btn-next').addEventListener('click', () => {
 });
 
 document.getElementById('btn-retry').addEventListener('click', () => {
+  setState('scanning');
+  startScanning().catch(onCameraError);
+});
+
+document.getElementById('btn-pf-retry').addEventListener('click', () => {
   setState('scanning');
   startScanning().catch(onCameraError);
 });

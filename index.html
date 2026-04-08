@@ -37,11 +37,12 @@
 
     /* ── State visibility ───────────────────────────────────── */
     section { display: none; }
-    body[data-state="scanning"] #s-scanning { display: flex; }
-    body[data-state="loading"]  #s-loading  { display: flex; }
-    body[data-state="playing"]  #s-playing  { display: flex; }
-    body[data-state="revealed"] #s-playing  { display: flex; }
-    body[data-state="error"]    #s-error    { display: flex; }
+    body[data-state="scanning"]     #s-scanning     { display: flex; }
+    body[data-state="loading"]      #s-loading      { display: flex; }
+    body[data-state="playing"]      #s-playing      { display: flex; }
+    body[data-state="revealed"]     #s-playing      { display: flex; }
+    body[data-state="error"]        #s-error        { display: flex; }
+    body[data-state="proxy-failed"] #s-proxy-failed { display: flex; }
 
     /* ── Shared layout ──────────────────────────────────────── */
     section {
@@ -409,6 +410,51 @@
     }
     .error-icon { font-size: 48px; }
     #error-msg  { color: var(--muted); font-size: 15px; max-width: 280px; }
+
+    /* ── PROXY-FAILED state ─────────────────────────────────── */
+    body[data-state="proxy-failed"] #s-proxy-failed { display: flex; }
+    #s-proxy-failed {
+      gap: 0;
+      justify-content: flex-start;
+      padding-top: max(52px, env(safe-area-inset-top, 52px));
+      overflow-y: auto;
+      text-align: center;
+    }
+    .pf-card {
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .pf-title { font-size: 20px; font-weight: 700; }
+    .pf-subtitle { font-size: 15px; color: var(--muted); line-height: 1.5; }
+    .pf-divider {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .pf-divider::before, .pf-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255,255,255,.1);
+    }
+    #spotify-paste {
+      width: 100%;
+      padding: 14px;
+      background: var(--surface);
+      border: 1.5px solid rgba(255,255,255,.12);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+    }
+    #spotify-paste:focus { border-color: var(--accent); }
   </style>
 </head>
 <body data-state="scanning">
@@ -477,6 +523,32 @@
     <div class="error-icon">&#128265;</div>
     <p id="error-msg">Something went wrong.</p>
     <button class="btn-secondary" id="btn-retry" style="max-width:220px;">Try Again</button>
+  </section>
+
+  <!-- PROXY FAILED — manual Spotify link fallback -->
+  <section id="s-proxy-failed">
+    <div class="pf-card">
+      <div class="error-icon">&#127758;</div>
+      <p class="pf-title">Can't reach Hitster servers</p>
+      <p class="pf-subtitle">
+        Your network is blocking our lookup service.<br>
+        Open the card link below in your browser, copy the Spotify link it shows, and paste it here.
+      </p>
+
+      <a id="pf-card-link" href="#" target="_blank" class="btn-secondary"
+         style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;word-break:break-all;font-size:13px;">
+        &#128279; Open card URL
+      </a>
+
+      <div class="pf-divider">then paste the Spotify link</div>
+
+      <input id="spotify-paste" type="url"
+             placeholder="https://open.spotify.com/track/..."
+             inputmode="url" autocomplete="off" autocorrect="off" autocapitalize="off">
+
+      <button class="btn-primary" onclick="submitManualSpotify()">Look up song</button>
+      <button class="btn-secondary" id="btn-pf-retry">Try scanning again</button>
+    </div>
   </section>
 
   <!-- Toast -->
