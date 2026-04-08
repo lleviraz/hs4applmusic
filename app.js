@@ -7,10 +7,17 @@
  */
 
 // ── CORS proxy helpers ──────────────────────────────────────────────────────
+// When running on localhost (node server.js), use our own /proxy endpoint —
+// no CORS restrictions, follows redirects server-side. In production
+// (GitHub Pages) fall back to public CORS proxy services.
+const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
 // Each entry: { prefix, type }
+//   type 'local'      → our own server.js /proxy endpoint (best, no restrictions)
 //   type 'allorigins' → response is JSON { status:{url}, contents }
 //   type 'direct'     → response body IS the fetched page (transparent proxy)
 const PROXIES = [
+  ...(IS_LOCAL ? [{ prefix: '/proxy?url=', type: 'local' }] : []),
   { prefix: 'https://api.allorigins.win/get?url=',           type: 'allorigins' },
   { prefix: 'https://corsproxy.io/?',                        type: 'direct'     },
   { prefix: 'https://api.codetabs.com/v1/proxy?quest=',      type: 'direct'     },
@@ -43,9 +50,11 @@ async function proxyGet(targetUrl) {
         if (!json.contents) throw new Error('empty response');
         return { finalUrl: json.status?.url ?? targetUrl, body: json.contents };
       } else {
+        // 'local' and 'direct': body is the raw page; final URL in X-Final-Url header
         const body = await res.text();
         if (!body) throw new Error('empty response');
-        return { finalUrl: targetUrl, body };
+        const finalUrl = res.headers.get('x-final-url') || targetUrl;
+        return { finalUrl, body };
       }
     } catch (e) {
       console.warn(`[proxy failed] ${proxy.prefix}`, e.message);
