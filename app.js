@@ -209,7 +209,8 @@ async function lookupTrack(rawUrl) {
   // ③ Extract Spotify track ID from final URL or page HTML
   let trackId = extractSpotifyId(finalUrl) || extractSpotifyId(body1);
   if (!trackId) {
-    throw new Error('Not a Hitster card — no Spotify track found.');
+    console.warn('[no track id] finalUrl:', finalUrl, '| body preview:', body1.slice(0, 300));
+    throw new Error(`Could not find Spotify track.\nResolved to: ${finalUrl.slice(0, 80)}`);
   }
 
   // ④ Fetch Spotify track page for OG metadata
@@ -274,7 +275,13 @@ async function lookupTrack(rawUrl) {
 }
 
 function extractSpotifyId(text) {
-  const m = text.match(/open\.spotify\.com\/track\/([\w]+)/);
+  // Match all Spotify track reference formats found in URLs and HTML:
+  //   https://open.spotify.com/track/XXXXX
+  //   https://open.spotify.com/embed/track/XXXXX   (iframe src in hitstergame.com pages)
+  //   spotify:track:XXXXX                          (Spotify URI)
+  const m =
+    text.match(/open\.spotify\.com\/(?:embed\/)?track\/([\w]+)/) ||
+    text.match(/spotify:track:([\w]+)/);
   return m?.[1] ?? null;
 }
 
