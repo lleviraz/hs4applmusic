@@ -163,23 +163,39 @@ async function startScanning() {
 function onQRDetected(raw) {
   stopCamera();
   const url = raw.trim();
+  console.log('[QR detected]', url);
   document.getElementById('loading-url').textContent = url;
   setState('loading');
   lookupTrack(url).catch(err => {
-    console.error('lookupTrack error:', err);
+    console.error('[lookupTrack error]', err, '| raw QR:', url);
     showError(err.message || 'Could not load track. Please try again.');
   });
 }
 
 // ── Track lookup ────────────────────────────────────────────────────────────
 async function lookupTrack(rawUrl) {
-  // ① Validate — must look like a URL
-  if (!/^https?:\/\//i.test(rawUrl)) {
-    throw new Error('Not a recognisable QR code. Try scanning again.');
+  let url = rawUrl.trim();
+
+  // ① Normalise the many URL/URI formats a Hitster QR might contain
+
+  // spotify:track:XXXX  →  convert to https URL
+  const spotifyUri = url.match(/^spotify:track:([\w]+)$/i);
+  if (spotifyUri) {
+    url = `https://open.spotify.com/track/${spotifyUri[1]}`;
+  }
+
+  // bare domain (no scheme) — e.g. "www.hitstergame.com/..."
+  if (!/^https?:\/\//i.test(url)) {
+    if (/^(www\.|hitstergame|open\.spotify)/i.test(url)) {
+      url = 'https://' + url;
+    } else {
+      // Unknown format — show it so the user can report it
+      throw new Error(`Unrecognised QR content:\n"${rawUrl.slice(0, 80)}"\nThis doesn't look like a Hitster card.`);
+    }
   }
 
   // ② Resolve Hitster / Spotify redirect via CORS proxy
-  const proxyUrl = PROXY + encodeURIComponent(rawUrl);
+  const proxyUrl = PROXY + encodeURIComponent(url);
   let res1;
   try {
     res1 = await fetch(proxyUrl).then(r => r.json());
