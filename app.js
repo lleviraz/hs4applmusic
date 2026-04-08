@@ -6,10 +6,13 @@
  * preview and links to Apple Music. Zero backend, zero API keys.
  */
 
+// ── Configuration ───────────────────────────────────────────────────────────
+// After deploying worker.js to Cloudflare Workers, paste your Worker URL here.
+// e.g. 'https://hitster-proxy.yourname.workers.dev'
+// Leave as '' to fall back to public CORS proxies.
+const WORKER_URL = '';
+
 // ── CORS proxy helpers ──────────────────────────────────────────────────────
-// When running on localhost (node server.js), use our own /proxy endpoint —
-// no CORS restrictions, follows redirects server-side. In production
-// (GitHub Pages) fall back to public CORS proxy services.
 const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
 // Each entry: { prefix, type }
@@ -17,7 +20,8 @@ const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127
 //   type 'allorigins' → response is JSON { status:{url}, contents }
 //   type 'direct'     → response body IS the fetched page (transparent proxy)
 const PROXIES = [
-  ...(IS_LOCAL ? [{ prefix: '/proxy?url=', type: 'local' }] : []),
+  ...(IS_LOCAL  ? [{ prefix: '/proxy?url=',          type: 'direct' }] : []),
+  ...(WORKER_URL ? [{ prefix: WORKER_URL + '/?url=', type: 'direct' }] : []),
   { prefix: 'https://api.allorigins.win/get?url=',           type: 'allorigins' },
   { prefix: 'https://corsproxy.io/?',                        type: 'direct'     },
   { prefix: 'https://api.codetabs.com/v1/proxy?quest=',      type: 'direct'     },
