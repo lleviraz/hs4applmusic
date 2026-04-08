@@ -10,7 +10,7 @@
 // After deploying worker.js to Cloudflare Workers, paste your Worker URL here.
 // e.g. 'https://hitster-proxy.yourname.workers.dev'
 // Leave as '' to fall back to public CORS proxies.
-const WORKER_URL = '';
+const WORKER_URL = 'https://hitster-proxy.liadl777.workers.dev/';
 
 // ── CORS proxy helpers ──────────────────────────────────────────────────────
 const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
