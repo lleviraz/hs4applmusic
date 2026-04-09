@@ -1,0 +1,14 @@
+{
+  "name": "Hitster × Apple Music",
+  "short_name": "Hitster",
+  "description": "Play Hitster card game with Apple Music previews",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0d0d0d",
+  "theme_color": "#fc3c44",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
