@@ -287,6 +287,21 @@ function buildAmSearchUrl(title) {
   return `https://music.apple.com/search?term=${encodeURIComponent(title)}`;
 }
 
+/**
+ * Convert an Apple Music https:// URL to the music:// deep-link scheme.
+ * On iOS this opens the Apple Music app and starts playing immediately.
+ * On Android / desktop the https:// URL is returned unchanged (music:// not supported).
+ */
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
+
+function toAppleMusicDeepLink(url) {
+  if (!url) return url;
+  return isIOS
+    ? url.replace(/^https:\/\//i, 'music://')
+    : url;
+}
+
 // ── Audio player ─────────────────────────────────────────────────────────────
 function setupAudio(previewUrl) {
   audio.pause();
@@ -362,7 +377,9 @@ function renderTrack(track) {
   document.getElementById('year-display').classList.remove('animate');
 
   const amBtn = document.getElementById('btn-apple-music');
-  amBtn.href = track.appleMusicUrl;
+  // music:// scheme → iOS opens Apple Music app and autoplays the track
+  // https:// fallback for Android / desktop
+  amBtn.href = toAppleMusicDeepLink(track.appleMusicUrl);
 
   setState('playing');
   setupAudio(track.previewUrl);
