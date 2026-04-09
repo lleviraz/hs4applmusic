@@ -508,6 +508,12 @@
       <div class="art-wrap">
         <img id="album-art" src="" alt="">
         <div class="art-glow"></div>
+        <!-- Apple Music embed player — injected when 30s preview ends -->
+        <iframe id="am-embed" src="" frameborder="0"
+          allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write"
+          style="display:none;position:absolute;inset:0;width:100%;height:100%;
+                 border-radius:var(--radius);background:#000;">
+        </iframe>
       </div>
 
       <p class="track-title" id="track-title">—</p>

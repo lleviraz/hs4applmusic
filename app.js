@@ -269,13 +269,16 @@ async function lookupBySpotifyId(spotifyId) {
 
   const year = best?.releaseDate ? best.releaseDate.slice(0, 4) : '';
 
+  const appleMusicUrl = best?.trackViewUrl ?? buildAmSearchUrl(oembedTitle);
+
   const track = {
     title:         oembedTitle,
     artist:        best?.artistName ?? '',
     year,
     artwork,
-    previewUrl:    best?.previewUrl   ?? null,
-    appleMusicUrl: best?.trackViewUrl ?? buildAmSearchUrl(oembedTitle),
+    previewUrl:    best?.previewUrl ?? null,
+    appleMusicUrl,
+    embedUrl:      toEmbedUrl(appleMusicUrl),
     spotifyId,
   };
 
@@ -285,6 +288,20 @@ async function lookupBySpotifyId(spotifyId) {
 
 function buildAmSearchUrl(title) {
   return `https://music.apple.com/search?term=${encodeURIComponent(title)}`;
+}
+
+/**
+ * Convert a music.apple.com track URL to the embed player URL with autoplay.
+ * e.g. https://music.apple.com/us/album/name/123?i=456
+ *   →  https://embed.music.apple.com/us/album/name/123?i=456&autoplay=1
+ */
+function toEmbedUrl(url) {
+  if (!url || url.includes('music.apple.com/search')) return null;
+  const embed = url
+    .replace('https://music.apple.com/', 'https://embed.music.apple.com/')
+    .replace('http://music.apple.com/',  'https://embed.music.apple.com/');
+  const sep = embed.includes('?') ? '&' : '?';
+  return embed + sep + 'autoplay=1';
 }
 
 /**
@@ -339,12 +356,30 @@ function onEnded() {
   progressFill.style.width = '100%';
   timeLabel.textContent = '0:00';
 
-  // Hand off to Apple Music automatically once the 30s preview is over.
-  // music:// scheme: iOS opens the Music app in-place (browser stays open).
-  // https:// fallback: navigates to Apple Music web on Android/desktop.
-  if (currentTrack?.appleMusicUrl) {
+  // Load the Apple Music embed player (autoplay=1) — stays in the app,
+  // plays full song if user is signed in to Apple Music in the browser.
+  if (currentTrack?.embedUrl) {
+    loadEmbed(currentTrack.embedUrl);
+  } else if (currentTrack?.appleMusicUrl) {
     openAppleMusic(currentTrack.appleMusicUrl);
   }
+}
+
+function loadEmbed(embedUrl) {
+  const iframe = document.getElementById('am-embed');
+  const img    = document.getElementById('album-art');
+  iframe.src   = embedUrl;
+  iframe.style.display = 'block';
+  img.style.display    = 'none';
+  document.querySelector('.art-glow').style.opacity = '0';
+}
+
+function resetEmbed() {
+  const iframe = document.getElementById('am-embed');
+  const img    = document.getElementById('album-art');
+  iframe.src   = '';
+  iframe.style.display = 'none';
+  img.style.display    = 'block';
 }
 
 function openAppleMusic(url) {
@@ -373,6 +408,7 @@ function teardownAudio() {
   document.body.classList.remove('playing');
   progressFill.style.width = '0%';
   timeLabel.textContent = '0:30';
+  resetEmbed();
 }
 
 // ── Render song card ─────────────────────────────────────────────────────────
