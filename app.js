@@ -512,9 +512,27 @@ function onCameraError(e) {
   showError(msg);
 }
 
+// ── Setup / first-launch ─────────────────────────────────────────────────────
+const AM_SETUP_KEY = 'hs4am_am_setup_done';
+
+function finishSetup() {
+  localStorage.setItem(AM_SETUP_KEY, '1');
+  setState('scanning');
+  startScanning().catch(onCameraError);
+}
+
+document.getElementById('btn-setup-done').addEventListener('click', finishSetup);
+document.getElementById('btn-setup-skip').addEventListener('click', finishSetup);
+
 // ── Boot ─────────────────────────────────────────────────────────────────────
 // Pre-fetch card DB in background so the first scan is instant
 getCardDb().catch(() => {});
 
-setState('scanning');
-startScanning().catch(onCameraError);
+if (localStorage.getItem(AM_SETUP_KEY)) {
+  // Returning user — go straight to scanner
+  setState('scanning');
+  startScanning().catch(onCameraError);
+} else {
+  // First launch — show Apple Music sign-in screen
+  setState('setup');
+}

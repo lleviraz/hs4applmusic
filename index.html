@@ -42,6 +42,7 @@
 
     /* ── State visibility ───────────────────────────────────── */
     section { display: none; }
+    body[data-state="setup"]        #s-setup        { display: flex; }
     body[data-state="scanning"]     #s-scanning     { display: flex; }
     body[data-state="loading"]      #s-loading      { display: flex; }
     body[data-state="playing"]      #s-playing      { display: flex; }
@@ -80,6 +81,81 @@
     #toast.show {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── SETUP state ────────────────────────────────────────── */
+    #s-setup {
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding-top: max(60px, env(safe-area-inset-top, 60px));
+      padding-bottom: 32px;
+      gap: 0;
+      overflow-y: auto;
+    }
+
+    .setup-logo {
+      font-size: 52px;
+      margin-bottom: 12px;
+    }
+
+    .setup-title {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+      margin-bottom: 6px;
+    }
+
+    .setup-sub {
+      font-size: 15px;
+      color: var(--muted);
+      text-align: center;
+      max-width: 300px;
+      line-height: 1.5;
+      margin-bottom: 28px;
+    }
+
+    .setup-embed-wrap {
+      width: 100%;
+      max-width: 400px;
+      height: 152px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 10px;
+      background: var(--surface);
+      position: relative;
+    }
+
+    .setup-embed-wrap iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    .setup-embed-hint {
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .setup-actions {
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .setup-skip {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 8px;
+      text-align: center;
     }
 
     /* ── SCANNING state ─────────────────────────────────────── */
@@ -481,6 +557,35 @@
   </style>
 </head>
 <body data-state="scanning">
+
+  <!-- SETUP — shown once on first launch -->
+  <section id="s-setup">
+    <div class="setup-logo">&#9834;</div>
+    <p class="setup-title">HS4AM</p>
+    <p class="setup-sub">
+      Sign in to Apple Music below so the app can play full songs
+      automatically after each 30-second preview.
+    </p>
+
+    <!-- Apple Music embed: user signs in here, inside Apple's own iframe -->
+    <div class="setup-embed-wrap">
+      <iframe id="setup-embed"
+        src="https://embed.music.apple.com/us/album/billie-jean/269572838?i=269573364"
+        allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write"
+        sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-top-navigation-by-user-activation">
+      </iframe>
+    </div>
+    <p class="setup-embed-hint">↑ Tap the player above and sign in with your Apple ID</p>
+
+    <div class="setup-actions">
+      <button class="btn-primary" id="btn-setup-done">
+        ✓ &nbsp;I'm signed in — let's play!
+      </button>
+      <button class="setup-skip" id="btn-setup-skip">
+        Skip (play previews only)
+      </button>
+    </div>
+  </section>
 
   <!-- SCANNING -->
   <section id="s-scanning">
