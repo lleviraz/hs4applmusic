@@ -288,20 +288,6 @@ function buildAmSearchUrl(title) {
 }
 
 
-/**
- * Convert an Apple Music https:// URL to the music:// deep-link scheme.
- * On iOS this opens the Apple Music app and starts playing immediately.
- * On Android / desktop the https:// URL is returned unchanged (music:// not supported).
- */
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
-
-function toAppleMusicDeepLink(url) {
-  if (!url) return url;
-  return isIOS
-    ? url.replace(/^https:\/\//i, 'music://')
-    : url;
-}
 
 // ── Audio player ─────────────────────────────────────────────────────────────
 function setupAudio(previewUrl) {
@@ -346,22 +332,15 @@ function onEnded() {
 function loadEmbed(track) {
   const url = toEmbedUrl(track.appleMusicUrl);
   if (!url) return;
-  const wrap   = document.getElementById('am-embed-wrap');
-  const iframe = document.getElementById('am-embed');
-  const img    = document.getElementById('album-art');
-  iframe.src = url;
-  wrap.classList.add('visible');
-  img.style.visibility = 'hidden';
-  document.querySelector('.art-glow').style.opacity = '0';
+  document.getElementById('am-embed').src = url;
+  document.getElementById('am-embed-wrap').classList.add('visible');
+  document.getElementById('preview-controls').style.display = 'none';
 }
 
 function resetEmbed() {
-  const wrap   = document.getElementById('am-embed-wrap');
-  const iframe = document.getElementById('am-embed');
-  const img    = document.getElementById('album-art');
-  iframe.src = '';
-  wrap.classList.remove('visible');
-  img.style.visibility = 'visible';
+  document.getElementById('am-embed').src = '';
+  document.getElementById('am-embed-wrap').classList.remove('visible');
+  document.getElementById('preview-controls').style.display = 'block';
 }
 
 /**
@@ -373,15 +352,6 @@ function toEmbedUrl(url) {
   return embed + (embed.includes('?') ? '&' : '?') + 'autoplay=1';
 }
 
-function openAppleMusic(url) {
-  // On iOS the music:// scheme switches to the Music app without leaving the page.
-  // On Android/desktop we open in a new tab so the user keeps access to our app.
-  if (isIOS) {
-    window.location.href = toAppleMusicDeepLink(url);
-  } else {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
-}
 
 function onAudioError() {
   const np = document.getElementById('no-preview');
@@ -420,12 +390,6 @@ function renderTrack(track) {
   document.getElementById('year-number').textContent = track.year || '?';
   document.getElementById('year-display').classList.remove('animate');
 
-  const amBtn = document.getElementById('btn-apple-music');
-  amBtn.href = '#';
-  amBtn.onclick = (e) => {
-    e.preventDefault();
-    openAppleMusic(track.appleMusicUrl);
-  };
 
   setState('playing');
   setupAudio(track.previewUrl);
