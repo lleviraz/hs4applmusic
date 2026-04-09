@@ -338,6 +338,23 @@ function onEnded() {
   document.body.classList.remove('playing');
   progressFill.style.width = '100%';
   timeLabel.textContent = '0:00';
+
+  // Hand off to Apple Music automatically once the 30s preview is over.
+  // music:// scheme: iOS opens the Music app in-place (browser stays open).
+  // https:// fallback: navigates to Apple Music web on Android/desktop.
+  if (currentTrack?.appleMusicUrl) {
+    openAppleMusic(currentTrack.appleMusicUrl);
+  }
+}
+
+function openAppleMusic(url) {
+  // On iOS the music:// scheme switches to the Music app without leaving the page.
+  // On Android/desktop we open in a new tab so the user keeps access to our app.
+  if (isIOS) {
+    window.location.href = toAppleMusicDeepLink(url);
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
 }
 
 function onAudioError() {
@@ -377,9 +394,11 @@ function renderTrack(track) {
   document.getElementById('year-display').classList.remove('animate');
 
   const amBtn = document.getElementById('btn-apple-music');
-  // music:// scheme → iOS opens Apple Music app and autoplays the track
-  // https:// fallback for Android / desktop
-  amBtn.href = toAppleMusicDeepLink(track.appleMusicUrl);
+  amBtn.href = '#';
+  amBtn.onclick = (e) => {
+    e.preventDefault();
+    openAppleMusic(track.appleMusicUrl);
+  };
 
   setState('playing');
   setupAudio(track.previewUrl);
