@@ -246,6 +246,35 @@
       margin-bottom: 28px;
     }
 
+    /* ── Hidden-until-revealed elements ─────────────────────── */
+    /* album art + title + artist blur in playing state */
+    body[data-state="playing"] #album-art,
+    body[data-state="playing"] .track-title,
+    body[data-state="playing"] .track-artist {
+      filter: blur(14px);
+      user-select: none;
+      transition: filter .5s ease;
+    }
+
+    /* Apple Music button hidden until revealed */
+    body[data-state="playing"] #btn-apple-music {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    /* smooth unblur on reveal */
+    body[data-state="revealed"] #album-art,
+    body[data-state="revealed"] .track-title,
+    body[data-state="revealed"] .track-artist {
+      filter: blur(0);
+      transition: filter .5s ease;
+    }
+
+    body[data-state="revealed"] #btn-apple-music {
+      visibility: visible;
+      pointer-events: auto;
+    }
+
     /* progress bar */
     .progress-wrap {
       width: 100%;
@@ -501,7 +530,7 @@
       <p id="no-preview">Preview unavailable</p>
 
       <div class="year-section">
-        <button id="btn-reveal">Reveal Year</button>
+        <button id="btn-reveal">Reveal</button>
         <div class="year-display" id="year-display">
           <span class="year-label">Released</span>
           <span id="year-number">—</span>
