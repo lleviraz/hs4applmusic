@@ -307,7 +307,10 @@ function setupAudio(previewUrl) {
   audio.currentTime = 0;
   audio.play().then(() => {
     document.body.classList.add('playing');
-  }).catch(() => {});
+  }).catch(() => {
+    // Autoplay blocked — light up the play button so user knows to tap
+    showToast('Tap ▶ to play preview');
+  });
 
   audio.addEventListener('timeupdate', onTimeUpdate);
   audio.addEventListener('ended', onEnded);
@@ -488,6 +491,9 @@ if (localStorage.getItem(AM_SETUP_KEY)) {
   setState('scanning');
   startScanning().catch(onCameraError);
 } else {
-  // First launch — show Apple Music sign-in screen
+  // First launch — lazy-load the setup iframe NOW (not on page load)
+  // so it never runs in the background on returning visits.
+  document.getElementById('setup-embed').src =
+    'https://embed.music.apple.com/us/album/billie-jean/269572838?i=269573364';
   setState('setup');
 }
