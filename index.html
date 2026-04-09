@@ -327,39 +327,47 @@
       margin-bottom: 28px;
     }
 
-    /* ── Play-full-song overlay (shown after preview ends) ──── */
-    #play-full-overlay {
+    /* ── Apple Music embed (replaces album art after preview) ── */
+    #am-embed-wrap {
       display: none;
       position: absolute;
       inset: 0;
       border-radius: var(--radius);
-      background: rgba(0,0,0,.55);
-      backdrop-filter: blur(2px);
+      overflow: hidden;
+    }
+    #am-embed-wrap.visible { display: block; }
+
+    #am-embed {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    /* Opaque cover hides song title/art inside the iframe until Reveal.
+       pointer-events:none = taps pass straight through to iframe controls. */
+    #am-embed-cover {
+      position: absolute;
+      inset: 0;
+      background: var(--surface);
+      border-radius: var(--radius);
+      pointer-events: none;
+      display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 10px;
-      color: #fff;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      letter-spacing: .2px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 500;
     }
-    #play-full-overlay.visible {
-      display: flex;
-      animation: fadeIn .35s ease;
-    }
+    body[data-state="revealed"] #am-embed-cover { display: none; }
+
     @keyframes fadeIn {
       from { opacity: 0; }
       to   { opacity: 1; }
     }
-    #play-full-overlay svg {
-      background: var(--accent);
-      border-radius: 50%;
-      padding: 10px;
-      width: 58px;
-      height: 58px;
-    }
+    #am-embed-wrap.visible { animation: fadeIn .4s ease; }
 
     /* ── Hidden-until-revealed elements ─────────────────────── */
     /* album art + title + artist blur in playing state */
@@ -647,10 +655,18 @@
       <div class="art-wrap">
         <img id="album-art" src="" alt="">
         <div class="art-glow"></div>
-        <!-- Shown after 30s preview ends -->
-        <div id="play-full-overlay">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          <span>Play Full Song</span>
+        <!-- Apple Music embed — loads when 30s preview ends -->
+        <div id="am-embed-wrap">
+          <iframe id="am-embed" src="" frameborder="0"
+            allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write"
+            sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-top-navigation-by-user-activation">
+          </iframe>
+          <!-- Covers song title/art in the embed until Reveal is tapped.
+               pointer-events:none lets taps pass through to the iframe's play button. -->
+          <div id="am-embed-cover">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
+            Tap to play full song
+          </div>
         </div>
       </div>
 

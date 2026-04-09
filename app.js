@@ -340,24 +340,38 @@ function onEnded() {
   progressFill.style.width = '100%';
   timeLabel.textContent = '0:00';
 
-  // Show the "Play Full Song" overlay over the (blurred) album art
-  if (currentTrack?.appleMusicUrl) {
-    showPlayFullOverlay();
-  }
+  if (currentTrack) loadEmbed(currentTrack);
 }
 
-function showPlayFullOverlay() {
-  document.getElementById('play-full-overlay').classList.add('visible');
+function loadEmbed(track) {
+  const url = toEmbedUrl(track.appleMusicUrl);
+  if (!url) return;
+  const wrap   = document.getElementById('am-embed-wrap');
+  const iframe = document.getElementById('am-embed');
+  const img    = document.getElementById('album-art');
+  iframe.src = url;
+  wrap.classList.add('visible');
+  img.style.visibility = 'hidden';
+  document.querySelector('.art-glow').style.opacity = '0';
 }
 
-function hidePlayFullOverlay() {
-  document.getElementById('play-full-overlay').classList.remove('visible');
+function resetEmbed() {
+  const wrap   = document.getElementById('am-embed-wrap');
+  const iframe = document.getElementById('am-embed');
+  const img    = document.getElementById('album-art');
+  iframe.src = '';
+  wrap.classList.remove('visible');
+  img.style.visibility = 'visible';
 }
 
-// Tap overlay → open Apple Music
-document.getElementById('play-full-overlay').addEventListener('click', () => {
-  if (currentTrack?.appleMusicUrl) openAppleMusic(currentTrack.appleMusicUrl);
-});
+/**
+ * music.apple.com  →  embed.music.apple.com  (+ autoplay attempt)
+ */
+function toEmbedUrl(url) {
+  if (!url || url.includes('/search')) return null;
+  const embed = url.replace('https://music.apple.com/', 'https://embed.music.apple.com/');
+  return embed + (embed.includes('?') ? '&' : '?') + 'autoplay=1';
+}
 
 function openAppleMusic(url) {
   // On iOS the music:// scheme switches to the Music app without leaving the page.
@@ -385,7 +399,7 @@ function teardownAudio() {
   document.body.classList.remove('playing');
   progressFill.style.width = '0%';
   timeLabel.textContent = '0:30';
-  hidePlayFullOverlay();
+  resetEmbed();
 }
 
 // ── Render song card ─────────────────────────────────────────────────────────
