@@ -362,7 +362,7 @@ function renderTrack(track) {
   document.getElementById('year-display').classList.remove('animate');
 
   const amBtn = document.getElementById('btn-apple-music');
-  amBtn.onclick = () => window.open(track.appleMusicUrl, '_blank');
+  amBtn.href = track.appleMusicUrl;
 
   setState('playing');
   setupAudio(track.previewUrl);
