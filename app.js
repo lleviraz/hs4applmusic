@@ -330,13 +330,29 @@ function onEnded() {
   progressFill.style.width = '100%';
   timeLabel.textContent = '0:00';
 
-  if (currentTrack) loadEmbed(currentTrack);
+  if (currentTrack) showEmbed(currentTrack);
 }
 
-function loadEmbed(track) {
-  const url = toEmbedUrl(track.appleMusicUrl);
+/**
+ * Preload the embed iframe silently while the preview plays.
+ * Called immediately from renderTrack so the iframe has 30s to load.
+ */
+function preloadEmbed(track) {
+  const url = toEmbedUrl(track.appleMusicUrl, 0); // load from start, no autoplay yet
   if (!url) return;
   document.getElementById('am-embed').src = url;
+}
+
+/**
+ * Show the already-loaded embed, seeking to where the preview ended.
+ */
+function showEmbed(track) {
+  const startSec = Math.round(audio.currentTime || 30);
+  const url = toEmbedUrl(track.appleMusicUrl, startSec);
+  if (!url) return;
+  // Reload src only if seek position changed (otherwise iframe is already ready)
+  const iframe = document.getElementById('am-embed');
+  if (iframe.src !== url) iframe.src = url;
   document.getElementById('am-embed-wrap').classList.add('visible');
   document.getElementById('preview-controls').style.display = 'none';
 }
@@ -348,12 +364,15 @@ function resetEmbed() {
 }
 
 /**
- * music.apple.com  →  embed.music.apple.com  (+ autoplay attempt)
+ * music.apple.com → embed.music.apple.com
+ * startSec = seek position in the full song (best-effort, Apple embed supports t=)
  */
-function toEmbedUrl(url) {
+function toEmbedUrl(url, startSec = 0) {
   if (!url || url.includes('/search')) return null;
   const embed = url.replace('https://music.apple.com/', 'https://embed.music.apple.com/');
-  return embed + (embed.includes('?') ? '&' : '?') + 'autoplay=1';
+  const sep   = embed.includes('?') ? '&' : '?';
+  const t     = startSec > 0 ? `&t=${startSec}` : '';
+  return embed + sep + 'autoplay=1' + t;
 }
 
 
@@ -397,6 +416,8 @@ function renderTrack(track) {
 
   setState('playing');
   setupAudio(track.previewUrl);
+  // Preload embed in background while preview plays — will be instant when needed
+  preloadEmbed(track);
 }
 
 // ── Error screen ─────────────────────────────────────────────────────────────
