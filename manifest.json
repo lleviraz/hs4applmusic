@@ -1,6 +1,6 @@
 {
-  "name": "Hitster × Apple Music",
-  "short_name": "Hitster",
+  "name": "HS4AM",
+  "short_name": "HS4AM",
   "description": "Play Hitster card game with Apple Music previews",
   "start_url": "./",
   "display": "standalone",
