@@ -307,9 +307,10 @@ function setupAudio(previewUrl) {
   audio.currentTime = 0;
   audio.play().then(() => {
     document.body.classList.add('playing');
+    playPauseBtn.classList.remove('needs-tap');
   }).catch(() => {
-    // Autoplay blocked — light up the play button so user knows to tap
-    showToast('Tap ▶ to play preview');
+    // Autoplay blocked — pulse the play button so user knows to tap it once
+    playPauseBtn.classList.add('needs-tap');
   });
 
   audio.addEventListener('timeupdate', onTimeUpdate);
@@ -450,9 +451,9 @@ document.getElementById('btn-pf-retry').addEventListener('click', () => {
 
 playPauseBtn.addEventListener('click', () => {
   if (!audio.src) return;
+  playPauseBtn.classList.remove('needs-tap');
   if (audio.paused) {
-    audio.play();
-    document.body.classList.add('playing');
+    audio.play().then(() => document.body.classList.add('playing')).catch(() => {});
   } else {
     audio.pause();
     document.body.classList.remove('playing');

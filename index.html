@@ -354,21 +354,22 @@
       border: none;
       display: block;
     }
-    /* Opaque cover hides song title/art until Reveal.
-       pointer-events:none = taps pass through to iframe controls. */
+    /* Covers only the TOP of the embed (title + artwork area).
+       Bottom ~52px (play controls) is fully exposed and tappable.
+       Removed on Reveal. */
     #am-embed-cover {
       position: absolute;
-      inset: 0;
+      top: 0; left: 0; right: 0;
+      height: 100px;             /* covers title/art, exposes controls */
       background: var(--surface);
-      border-radius: var(--radius);
-      pointer-events: none;
+      border-radius: var(--radius) var(--radius) 0 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 8px;
       color: var(--muted);
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 13px;
+      pointer-events: none;      /* title area: visual only, doesn't block taps */
     }
     body[data-state="revealed"] #am-embed-cover { display: none; }
 
@@ -422,21 +423,27 @@
     }
 
     .play-btn {
-      width: 44px;
-      height: 44px;
+      width: 54px;
+      height: 54px;
       border-radius: 50%;
       border: none;
       background: var(--accent);
       color: #fff;
-      font-size: 18px;
+      font-size: 20px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      transition: opacity .15s;
+      transition: opacity .15s, transform .15s;
     }
     .play-btn:active { opacity: .7; }
+
+    @keyframes pulse-play {
+      0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0   rgba(252,60,68,.5); }
+      50%       { transform: scale(1.08); box-shadow: 0 0 0 12px rgba(252,60,68,0);  }
+    }
+    .play-btn.needs-tap { animation: pulse-play 1.2s ease-in-out infinite; }
     #play-icon  { display: block; }
     #pause-icon { display: none; }
     body.playing #play-icon  { display: none; }
@@ -684,8 +691,7 @@
         <!-- Hides song title inside the embed until Reveal.
              pointer-events:none = taps still reach the iframe play button. -->
         <div id="am-embed-cover">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
-          Tap to play full song
+          🎵 Song hidden — tap Reveal to see
         </div>
       </div>
 
