@@ -523,24 +523,24 @@
     <div class="error-icon">&#128265;</div>
     <p id="error-msg">Something went wrong.</p>
     <button class="btn-secondary" id="btn-retry" style="max-width:220px;">Try Again</button>
+    <button class="btn-secondary" id="btn-manual"
+            style="max-width:220px;margin-top:8px;font-size:14px;opacity:.7;"
+            onclick="document.getElementById('spotify-paste').value='';document.body.dataset.state='proxy-failed';">
+      Paste Spotify link instead
+    </button>
   </section>
 
-  <!-- PROXY FAILED — manual Spotify link fallback -->
+  <!-- MANUAL LOOKUP — paste a Spotify link for unsupported editions -->
   <section id="s-proxy-failed">
     <div class="pf-card">
-      <div class="error-icon">&#127758;</div>
-      <p class="pf-title">Can't reach Hitster servers</p>
+      <div class="error-icon">&#127925;</div>
+      <p class="pf-title">Manual lookup</p>
       <p class="pf-subtitle">
-        Your network is blocking our lookup service.<br>
-        Open the card link below in your browser, copy the Spotify link it shows, and paste it here.
+        Open the Hitster card link in your browser, find the Spotify track,
+        and paste the link below.
       </p>
 
-      <a id="pf-card-link" href="#" target="_blank" class="btn-secondary"
-         style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;word-break:break-all;font-size:13px;">
-        &#128279; Open card URL
-      </a>
-
-      <div class="pf-divider">then paste the Spotify link</div>
+      <div class="pf-divider">paste Spotify link</div>
 
       <input id="spotify-paste" type="url"
              placeholder="https://open.spotify.com/track/..."

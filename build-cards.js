@@ -7,23 +7,20 @@
  * and saves cards-il.json next to this file.
  */
 
-const https = require('https');
-const fs    = require('fs');
+const fs      = require('fs');
+const path    = require('path');
 
-const URL     = 'https://hitster.jumboplay.com/hitster-assets/gameset_database.json';
+const LOCAL   = path.join(__dirname, 'db', 'gameset_database.json');
 const EDITION = 'aaaj0001';
 const OUTPUT  = 'cards-il.json';
 
-console.log('Downloading', URL, '...');
+console.log('Reading local database from', LOCAL, '...');
 
-https.get(URL, { headers: { 'User-Agent': 'Mozilla/5.0' } }, res => {
-  let raw = '';
-  res.on('data', c => raw += c);
-  res.on('end', () => {
+const raw = fs.readFileSync(LOCAL, 'utf8');
+(function () {
     let data;
     try { data = JSON.parse(raw); } catch (e) {
       console.error('Failed to parse JSON:', e.message);
-      console.log('Raw response (first 500 chars):', raw.slice(0, 500));
       process.exit(1);
     }
 
@@ -52,7 +49,4 @@ https.get(URL, { headers: { 'User-Agent': 'Mozilla/5.0' } }, res => {
     // Save filtered data
     fs.writeFileSync(OUTPUT, JSON.stringify(il, null, 2));
     console.log(`\nSaved ${il.length} cards to ${OUTPUT}`);
-  });
-}).on('error', e => {
-  console.error('Download failed:', e.message);
-});
+})();

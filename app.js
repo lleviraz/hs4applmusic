@@ -1,74 +1,21 @@
 /**
  * Hitster × Apple Music
  * ─────────────────────
- * Scans Hitster card QR codes → resolves the Spotify track via allorigins.win
- * CORS proxy → parses Open Graph meta tags → searches iTunes → plays the 30s
- * preview and links to Apple Music. Zero backend, zero API keys.
+ * Scans Hitster card QR codes → looks up Spotify ID in local cards-il.json
+ * → fetches Spotify oEmbed (CORS-friendly, no auth) for title + artwork
+ * → searches iTunes for 30s preview + Apple Music link + year.
+ * Zero backend. Zero API keys. Zero proxies.
  */
 
-// ── Configuration ───────────────────────────────────────────────────────────
-// After deploying worker.js to Cloudflare Workers, paste your Worker URL here.
-// e.g. 'https://hitster-proxy.yourname.workers.dev'
-// Leave as '' to fall back to public CORS proxies.
-const WORKER_URL = 'https://hitster-proxy.liadl777.workers.dev/';
-
-// ── CORS proxy helpers ──────────────────────────────────────────────────────
-const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-
-// Each entry: { prefix, type }
-//   type 'local'      → our own server.js /proxy endpoint (best, no restrictions)
-//   type 'allorigins' → response is JSON { status:{url}, contents }
-//   type 'direct'     → response body IS the fetched page (transparent proxy)
-const PROXIES = [
-  ...(IS_LOCAL  ? [{ prefix: '/proxy?url=',          type: 'direct' }] : []),
-  ...(WORKER_URL ? [{ prefix: WORKER_URL + '/?url=', type: 'direct' }] : []),
-  { prefix: 'https://api.allorigins.win/get?url=',           type: 'allorigins' },
-  { prefix: 'https://corsproxy.io/?',                        type: 'direct'     },
-  { prefix: 'https://api.codetabs.com/v1/proxy?quest=',      type: 'direct'     },
-];
-
-/**
- * Fetch a URL, trying direct fetch first (works if target has CORS headers),
- * then falling through a chain of public CORS proxies.
- * Returns { finalUrl, body }.
- */
-async function proxyGet(targetUrl) {
-  // ① Try direct fetch — works if the target sends Access-Control-Allow-Origin
-  try {
-    const res = await fetch(targetUrl, { mode: 'cors' });
-    if (res.ok) {
-      const body = await res.text();
-      if (body) return { finalUrl: res.url, body };
-    }
-  } catch (e) {
-    console.log('[direct fetch failed]', e.message);
+// ── Card database ────────────────────────────────────────────────────────────
+let _cardDb = null;
+async function getCardDb() {
+  if (!_cardDb) {
+    const res = await fetch('cards-il.json');
+    if (!res.ok) throw new Error('Could not load card database');
+    _cardDb = await res.json();
   }
-
-  // ② Try each CORS proxy in sequence
-  for (const proxy of PROXIES) {
-    try {
-      const res = await fetch(proxy.prefix + encodeURIComponent(targetUrl));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      if (proxy.type === 'allorigins') {
-        const json = await res.json();
-        if (!json.contents) throw new Error('empty response');
-        return { finalUrl: json.status?.url ?? targetUrl, body: json.contents };
-      } else {
-        // 'local' and 'direct': body is the raw page; final URL in X-Final-Url header
-        const body = await res.text();
-        if (!body) throw new Error('empty response');
-        const finalUrl = res.headers.get('x-final-url') || targetUrl;
-        return { finalUrl, body };
-      }
-    } catch (e) {
-      console.warn(`[proxy failed] ${proxy.prefix}`, e.message);
-    }
-  }
-
-  // All methods failed
-  const err = new Error('PROXY_FAILED');
-  err.proxyFailed = true;
-  throw err;
+  return _cardDb;
 }
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -81,12 +28,11 @@ const playPauseBtn = document.getElementById('play-pause');
 const toast        = document.getElementById('toast');
 
 // ── State ───────────────────────────────────────────────────────────────────
-let stream         = null;     // MediaStream from camera
-let scanLoop       = null;     // rAF id or interval id
-let scanActive     = false;
-let lastScan       = 0;        // throttle timestamp
-let currentTrack   = null;     // resolved track data
-let lastDetectedUrl = null;    // raw QR URL for manual fallback
+let stream        = null;
+let scanLoop      = null;
+let scanActive    = false;
+let lastScan      = 0;
+let currentTrack  = null;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function setState(name) {
@@ -118,29 +64,45 @@ function jaccard(a, b) {
   const setA = new Set(normalize(a).split(' ').filter(Boolean));
   const setB = new Set(normalize(b).split(' ').filter(Boolean));
   if (!setA.size && !setB.size) return 1;
+  if (!setA.size || !setB.size) return 0;
   const inter = [...setA].filter(x => setB.has(x)).length;
   const union = new Set([...setA, ...setB]).size;
   return inter / union;
 }
 
-function bestMatch(results, artist, title) {
+function bestMatch(results, title) {
   if (!results?.length) return null;
   const scored = results.map(r => ({
     r,
-    s: 0.5 * jaccard(r.artistName, artist) + 0.5 * jaccard(r.trackName, title),
+    s: jaccard(r.trackName, title),
   }));
   scored.sort((a, b) =>
     b.s - a.s ||
-    new Date(a.r.releaseDate) - new Date(b.r.releaseDate) // prefer earliest on tie
+    new Date(a.r.releaseDate) - new Date(b.r.releaseDate)
   );
-  return scored[0].s >= 0.25 ? scored[0].r : null;
+  return scored[0].s >= 0.2 ? scored[0].r : null;
 }
 
-function parseMeta(html, property) {
-  // handles both property="…" and property='…' and content before or after property
-  const re1 = new RegExp(`<meta[^>]+property=["']${property}["'][^>]+content=["']([^"']+)["']`, 'i');
-  const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${property}["']`, 'i');
-  return (html.match(re1) || html.match(re2))?.[1] ?? null;
+// ── URL parsing ──────────────────────────────────────────────────────────────
+/**
+ * Parse a Hitster QR URL into {sku, cardNum}.
+ * Handles bare domain and https:// forms, e.g.:
+ *   www.hitstergame.com/il/aaaj0001/00039
+ *   https://www.hitstergame.com/il/aaaj0001/00039
+ */
+function parseHitsterUrl(raw) {
+  const url = raw.trim().replace(/^https?:\/\//i, '');
+  // www.hitstergame.com/{lang}/{sku}/{card}
+  const m = url.match(/hitstergame\.com\/[^/]+\/([^/]+)\/([^/?#]+)/i);
+  if (m) return { sku: m[1].toLowerCase(), cardNum: m[2].padStart(5, '0') };
+  return null;
+}
+
+function extractSpotifyId(text) {
+  const m =
+    text.match(/open\.spotify\.com\/(?:embed\/)?track\/([\w]+)/) ||
+    text.match(/spotify:track:([\w]+)/);
+  return m?.[1] ?? null;
 }
 
 // ── Camera / QR scanning ────────────────────────────────────────────────────
@@ -157,7 +119,7 @@ async function startCamera() {
     }
   }
   cam.srcObject = stream;
-  await cam.play().catch(() => {}); // Safari sometimes needs explicit play()
+  await cam.play().catch(() => {});
 }
 
 function stopCamera() {
@@ -176,9 +138,7 @@ async function startScanning() {
   scanActive = true;
 
   if ('BarcodeDetector' in window) {
-    // ── Native BarcodeDetector (Android Chrome, recent Safari) ──────────────
     const detector = new BarcodeDetector({ formats: ['qr_code'] });
-
     const loop = async () => {
       if (!scanActive) return;
       const now = Date.now();
@@ -186,20 +146,15 @@ async function startScanning() {
         lastScan = now;
         try {
           const barcodes = await detector.detect(cam);
-          if (barcodes.length) {
-            onQRDetected(barcodes[0].rawValue);
-            return;
-          }
-        } catch (_) { /* camera not ready yet */ }
+          if (barcodes.length) { onQRDetected(barcodes[0].rawValue); return; }
+        } catch (_) {}
       }
       scanLoop = requestAnimationFrame(loop);
     };
     scanLoop = requestAnimationFrame(loop);
 
   } else {
-    // ── jsQR fallback ────────────────────────────────────────────────────────
     const ctx = qrCanvas.getContext('2d', { willReadFrequently: true });
-
     const loop = () => {
       if (!scanActive) return;
       const now = Date.now();
@@ -212,10 +167,7 @@ async function startScanning() {
         const code = jsQR(imageData.data, imageData.width, imageData.height, {
           inversionAttempts: 'dontInvert',
         });
-        if (code?.data) {
-          onQRDetected(code.data);
-          return;
-        }
+        if (code?.data) { onQRDetected(code.data); return; }
       }
       scanLoop = requestAnimationFrame(loop);
     };
@@ -225,132 +177,114 @@ async function startScanning() {
 
 function onQRDetected(raw) {
   stopCamera();
-  const url = raw.trim();
-  lastDetectedUrl = url;
-  console.log('[QR detected]', url);
-  document.getElementById('loading-url').textContent = url;
+  console.log('[QR detected]', raw);
+  document.getElementById('loading-url').textContent = raw.trim();
   setState('loading');
-  lookupTrack(url).catch(err => {
-    console.error('[lookupTrack error]', err, '| raw QR:', url);
-    if (err.proxyFailed) {
-      showProxyFailed(url);
-    } else {
-      showError(err.message || 'Could not load track. Please try again.');
-    }
+  lookupTrack(raw).catch(err => {
+    console.error('[lookupTrack error]', err);
+    showError(err.message || 'Could not load track. Please try again.');
   });
 }
 
 // ── Track lookup ────────────────────────────────────────────────────────────
 async function lookupTrack(rawUrl) {
-  let url = rawUrl.trim();
+  const url = rawUrl.trim();
 
-  // ① Normalise the many URL/URI formats a Hitster QR might contain
-
-  // spotify:track:XXXX  →  convert to https URL
-  const spotifyUri = url.match(/^spotify:track:([\w]+)$/i);
-  if (spotifyUri) {
-    url = `https://open.spotify.com/track/${spotifyUri[1]}`;
+  // ① Check if it's a direct Spotify link (manual paste flow)
+  const directSpotifyId = extractSpotifyId(url) ||
+    (url.match(/^[\w]{22}$/) ? url : null);
+  if (directSpotifyId) {
+    return lookupBySpotifyId(directSpotifyId);
   }
 
-  // bare domain (no scheme) — e.g. "www.hitstergame.com/..."
-  if (!/^https?:\/\//i.test(url)) {
-    if (/^(www\.|hitstergame|open\.spotify)/i.test(url)) {
-      url = 'https://' + url;
-    } else {
-      // Unknown format — show it so the user can report it
-      throw new Error(`Unrecognised QR content:\n"${rawUrl.slice(0, 80)}"\nThis doesn't look like a Hitster card.`);
-    }
+  // ② Parse Hitster QR URL
+  const parsed = parseHitsterUrl(url);
+  if (!parsed) {
+    throw new Error(`Not a Hitster card QR code:\n"${url.slice(0, 80)}"`);
   }
 
-  // ② Resolve Hitster / Spotify redirect via CORS proxy (tries multiple proxies)
-  let res1;
+  const { sku, cardNum } = parsed;
+  document.getElementById('loading-url').textContent = `${sku} / card ${cardNum}`;
+
+  // ③ Look up in local card database
+  const db = await getCardDb();
+  const spotifyId = db[sku]?.[cardNum];
+
+  if (!spotifyId) {
+    const knownSkus = Object.keys(db).join(', ');
+    throw new Error(
+      `Card ${cardNum} not found in edition "${sku}".\n` +
+      `Supported editions: ${knownSkus}`
+    );
+  }
+
+  return lookupBySpotifyId(spotifyId);
+}
+
+/**
+ * Given a Spotify track ID, resolve full track info:
+ * oEmbed → title + artwork, then iTunes → year + preview + Apple Music URL.
+ */
+async function lookupBySpotifyId(spotifyId) {
+  // ① Spotify oEmbed (CORS-friendly, no auth required)
+  const spotifyTrackUrl = `https://open.spotify.com/track/${spotifyId}`;
+  let oembedTitle = null;
+  let oembedArt   = null;
+
   try {
-    res1 = await proxyGet(url);
+    const oembed = await fetch(
+      `https://open.spotify.com/oembed?url=${encodeURIComponent(spotifyTrackUrl)}`
+    ).then(r => {
+      if (!r.ok) throw new Error(`oEmbed HTTP ${r.status}`);
+      return r.json();
+    });
+    oembedTitle = oembed.title  || null;
+    oembedArt   = oembed.thumbnail_url || null;
   } catch (e) {
-    throw new Error(e.message);
+    console.warn('[oEmbed failed]', e.message);
+    // Non-fatal — fall through; iTunes might still find the track
   }
 
-  const { finalUrl, body: body1 } = res1;
-
-  // ③ Extract Spotify track ID from final URL or page HTML
-  let trackId = extractSpotifyId(finalUrl) || extractSpotifyId(body1);
-  if (!trackId) {
-    console.warn('[no track id] finalUrl:', finalUrl, '| body preview:', body1.slice(0, 300));
-    throw new Error(`Could not find Spotify track.\nResolved to: ${finalUrl.slice(0, 80)}`);
+  if (!oembedTitle) {
+    throw new Error('Could not retrieve song info from Spotify. Try again.');
   }
 
-  // ④ Fetch Spotify track page for OG metadata
-  const spotifyUrl = `https://open.spotify.com/track/${trackId}`;
-  let res2;
+  // ② iTunes search by title
+  const q = encodeURIComponent(oembedTitle);
+  let itunesData = { results: [] };
   try {
-    res2 = await proxyGet(spotifyUrl);
-  } catch (e) {
-    throw new Error('Could not reach Spotify metadata. Try again.');
-  }
-  const html = res2.body;
-
-  const title  = parseMeta(html, 'og:title')       || '';
-  const desc   = parseMeta(html, 'og:description') || '';
-  // Spotify's og:description format: "Song Name, a song by Artist Name on Spotify"
-  const artistMatch = desc.match(/,?\s*a song by ([^"]+?) on Spotify/i);
-  const artist = (artistMatch?.[1] ?? '').trim();
-  // music:release_date or og:music:release_date
-  const releaseRaw = parseMeta(html, 'music:release_date') || parseMeta(html, 'og:music:release_date') || '';
-  const year   = releaseRaw.slice(0, 4) || '';
-  const artRaw = parseMeta(html, 'og:image') || '';
-
-  if (!title) throw new Error('Could not read song info from Spotify. Try again.');
-
-  // ⑤ Search iTunes
-  const q = encodeURIComponent(`${artist} ${title}`);
-  let itunesData;
-  try {
-    // Try direct first (usually works; iTunes does send CORS headers)
     itunesData = await fetch(
-      `https://itunes.apple.com/search?term=${q}&entity=song&limit=10&media=music&explicit=No`
+      `https://itunes.apple.com/search?term=${q}&entity=song&limit=10&media=music`
     ).then(r => r.json());
-  } catch (_) {
-    // Fall back through proxy
-    try {
-      const r = await proxyGet(`https://itunes.apple.com/search?term=${q}&entity=song&limit=10&media=music`);
-      itunesData = JSON.parse(r.body);
-    } catch (e) {
-      // Non-fatal: show info without preview
-      itunesData = { results: [] };
-    }
+  } catch (e) {
+    console.warn('[iTunes search failed]', e.message);
   }
 
-  const best = bestMatch(itunesData.results, artist, title);
+  const best = bestMatch(itunesData.results, oembedTitle);
 
-  // High-res artwork: swap 100x100bb → 600x600bb in iTunes URL
+  // High-res artwork
   const artwork = best?.artworkUrl100
     ? best.artworkUrl100.replace('100x100bb', '600x600bb')
-    : artRaw;
+    : oembedArt;
 
-  return {
-    title,
-    artist,
+  const year = best?.releaseDate ? best.releaseDate.slice(0, 4) : '';
+
+  const track = {
+    title:         oembedTitle,
+    artist:        best?.artistName ?? '',
     year,
     artwork,
-    previewUrl:    best?.previewUrl    ?? null,
-    appleMusicUrl: best?.trackViewUrl  ?? buildAmSearchUrl(artist, title),
-    spotifyId:     trackId,
+    previewUrl:    best?.previewUrl   ?? null,
+    appleMusicUrl: best?.trackViewUrl ?? buildAmSearchUrl(oembedTitle),
+    spotifyId,
   };
+
+  renderTrack(track);
+  return track;
 }
 
-function extractSpotifyId(text) {
-  // Match all Spotify track reference formats found in URLs and HTML:
-  //   https://open.spotify.com/track/XXXXX
-  //   https://open.spotify.com/embed/track/XXXXX   (iframe src in hitstergame.com pages)
-  //   spotify:track:XXXXX                          (Spotify URI)
-  const m =
-    text.match(/open\.spotify\.com\/(?:embed\/)?track\/([\w]+)/) ||
-    text.match(/spotify:track:([\w]+)/);
-  return m?.[1] ?? null;
-}
-
-function buildAmSearchUrl(artist, title) {
-  return `https://music.apple.com/search?term=${encodeURIComponent(`${artist} ${title}`)}`;
+function buildAmSearchUrl(title) {
+  return `https://music.apple.com/search?term=${encodeURIComponent(title)}`;
 }
 
 // ── Audio player ─────────────────────────────────────────────────────────────
@@ -371,9 +305,7 @@ function setupAudio(previewUrl) {
   audio.currentTime = 0;
   audio.play().then(() => {
     document.body.classList.add('playing');
-  }).catch(() => {
-    // autoplay blocked — user can tap play manually
-  });
+  }).catch(() => {});
 
   audio.addEventListener('timeupdate', onTimeUpdate);
   audio.addEventListener('ended', onEnded);
@@ -394,8 +326,9 @@ function onEnded() {
 }
 
 function onAudioError() {
-  document.getElementById('no-preview').style.display = 'block';
-  document.getElementById('no-preview').textContent = 'Preview unavailable';
+  const np = document.getElementById('no-preview');
+  np.style.display = 'block';
+  np.textContent = 'Preview unavailable';
   document.body.classList.remove('playing');
 }
 
@@ -415,7 +348,7 @@ function renderTrack(track) {
   currentTrack = track;
 
   document.getElementById('track-title').textContent  = track.title  || 'Unknown title';
-  document.getElementById('track-artist').textContent = track.artist || 'Unknown artist';
+  document.getElementById('track-artist').textContent = track.artist || '';
 
   const img = document.getElementById('album-art');
   if (track.artwork) {
@@ -438,36 +371,23 @@ function renderTrack(track) {
 // ── Error screen ─────────────────────────────────────────────────────────────
 function showError(msg) {
   document.getElementById('error-msg').textContent = msg;
-  document.getElementById('s-proxy-failed').style.display = 'none';
   teardownAudio();
   setState('error');
 }
 
-function showProxyFailed(cardUrl) {
-  teardownAudio();
-  // Populate the proxy-failed screen with the card URL
-  const link = document.getElementById('pf-card-link');
-  const display = cardUrl.startsWith('http') ? cardUrl : 'https://' + cardUrl;
-  link.href = display;
-  link.textContent = display;
-  document.getElementById('spotify-paste').value = '';
-  setState('proxy-failed');
-}
-
+// ── Manual Spotify paste (fallback for unknown editions) ─────────────────────
 window.submitManualSpotify = function submitManualSpotify() {
   const input = document.getElementById('spotify-paste').value.trim();
   if (!input) return;
-  // Accept full Spotify URL or just a track ID
   const trackId = extractSpotifyId(input) ||
-    (input.match(/^[\w]{22}$/) ? input : null); // 22-char base62 track IDs
+    (input.match(/^[\w]{22}$/) ? input : null);
   if (!trackId) {
     showToast('Paste a Spotify track link, e.g. open.spotify.com/track/...');
     return;
   }
-  const spotifyUrl = `https://open.spotify.com/track/${trackId}`;
-  document.getElementById('loading-url').textContent = spotifyUrl;
+  document.getElementById('loading-url').textContent = `spotify:track:${trackId}`;
   setState('loading');
-  lookupTrack(spotifyUrl).catch(err => {
+  lookupBySpotifyId(trackId).catch(err => {
     showError(err.message || 'Could not load track.');
   });
 };
@@ -477,7 +397,6 @@ document.getElementById('btn-reveal').addEventListener('click', () => {
   setState('revealed');
   const yd = document.getElementById('year-display');
   yd.classList.remove('animate');
-  // force reflow so animation replays
   void yd.offsetWidth;
   yd.classList.add('animate');
 });
@@ -521,10 +440,9 @@ function onCameraError(e) {
   showError(msg);
 }
 
-// ── Handle QR codes that are direct Spotify URLs ─────────────────────────────
-// (some editions embed spotify: URIs instead of https:// URLs)
-const _origOnQR = onQRDetected;
-
 // ── Boot ─────────────────────────────────────────────────────────────────────
+// Pre-fetch card DB in background so the first scan is instant
+getCardDb().catch(() => {});
+
 setState('scanning');
 startScanning().catch(onCameraError);
