@@ -1,0 +1,13 @@
+# Jumbo's full game database — do not commit (2.7 MB, not ours to redistribute)
+db/
+
+# OS & editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Node (if ever added)
+node_modules/

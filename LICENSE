@@ -1,0 +1,60 @@
+MIT License
+
+Copyright (c) 2025 lleviraz
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+───────────────────────────────────────────────────────────────────────────────
+THIRD-PARTY NOTICES & DISCLAIMERS
+───────────────────────────────────────────────────────────────────────────────
+
+This project is an independent fan companion app and is NOT affiliated with,
+endorsed by, or sponsored by any of the following:
+
+  • Jumbo Games / Identity Games — creators of the Hitster® card game
+  • Apple Inc. — Apple Music, iTunes
+  • Spotify AB
+
+HITSTER® is a registered trademark of Jumbo/Identity Games. All rights
+reserved by their respective owners.
+
+─── Card metadata (cards-il.json) ────────────────────────────────────────────
+
+The file cards-il.json contains a mapping of Hitster card numbers to Spotify
+track identifiers. This mapping was derived from data publicly served by
+Jumbo's Hitster API (hitster.jumboplay.com) solely to enable users who already
+own physical Hitster cards to look up the song on Apple Music. No song audio,
+artwork, lyrics, or other copyrightable content is stored in this repository.
+
+Use of this app requires possession of genuine physical Hitster cards.
+This project does not reproduce, replace, or substitute the Hitster game.
+
+─── Apple iTunes Search API ──────────────────────────────────────────────────
+
+Song metadata and 30-second preview clips are fetched at runtime from Apple's
+iTunes Search API (itunes.apple.com/search). Apple's 30-second previews are
+provided by Apple solely for the purpose of song identification and linking
+to Apple Music. This app does not store, cache, or redistribute these previews.
+Usage complies with Apple's API terms of service for non-commercial linking.
+
+─── Spotify oEmbed API ───────────────────────────────────────────────────────
+
+Track titles and artwork thumbnails are fetched at runtime from Spotify's
+oEmbed endpoint (open.spotify.com/oembed), which is publicly accessible and
+intended for third-party embedding per Spotify's developer terms.
