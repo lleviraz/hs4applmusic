@@ -54,8 +54,8 @@ function fmt(secs) {
 function normalize(str) {
   return (str || '')
     .toLowerCase()
-    .replace(/[''`]/g, "'")
-    .replace(/[^a-z0-9' ]/g, ' ')
+    .replace(/['\u2018\u2019\u201b`]/g, "'")
+    .replace(/[^\p{L}\p{N}' ]/gu, ' ')  // Unicode-aware: keeps Hebrew, Arabic, etc.
     .replace(/\s+/g, ' ')
     .trim();
 }
