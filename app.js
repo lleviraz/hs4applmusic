@@ -70,17 +70,20 @@ function jaccard(a, b) {
   return inter / union;
 }
 
-function bestMatch(results, title) {
+function bestMatch(results, title, artist = null) {
   if (!results?.length) return null;
   const scored = results.map(r => ({
     r,
-    s: jaccard(r.trackName, title),
+    // Title similarity is primary; artist similarity (if known) breaks ties
+    titleScore:  jaccard(r.trackName,  title),
+    artistScore: artist ? jaccard(r.artistName, artist) : 0,
   }));
   scored.sort((a, b) =>
-    b.s - a.s ||
+    b.titleScore  - a.titleScore  ||
+    b.artistScore - a.artistScore ||
     new Date(a.r.releaseDate) - new Date(b.r.releaseDate)
   );
-  return scored[0].s >= 0.2 ? scored[0].r : null;
+  return scored[0].titleScore >= 0.2 ? scored[0].r : null;
 }
 
 // ── URL parsing ──────────────────────────────────────────────────────────────
@@ -228,8 +231,9 @@ async function lookupTrack(rawUrl) {
 async function lookupBySpotifyId(spotifyId) {
   // ① Spotify oEmbed (CORS-friendly, no auth required)
   const spotifyTrackUrl = `https://open.spotify.com/track/${spotifyId}`;
-  let oembedTitle = null;
-  let oembedArt   = null;
+  let oembedTitle  = null;
+  let oembedArt    = null;
+  let oembedArtist = null;
 
   try {
     const oembed = await fetch(
@@ -238,8 +242,9 @@ async function lookupBySpotifyId(spotifyId) {
       if (!r.ok) throw new Error(`oEmbed HTTP ${r.status}`);
       return r.json();
     });
-    oembedTitle = oembed.title  || null;
-    oembedArt   = oembed.thumbnail_url || null;
+    oembedTitle  = oembed.title       || null;
+    oembedArt    = oembed.thumbnail_url || null;
+    oembedArtist = oembed.author_name  || null;
   } catch (e) {
     console.warn('[oEmbed failed]', e.message);
     // Non-fatal — fall through; iTunes might still find the track
@@ -249,8 +254,10 @@ async function lookupBySpotifyId(spotifyId) {
     throw new Error('Could not retrieve song info from Spotify. Try again.');
   }
 
-  // ② iTunes search by title
-  const q = encodeURIComponent(oembedTitle);
+  // ② iTunes search by title + artist (artist helps disambiguate same-title songs)
+  const q = encodeURIComponent(
+    oembedArtist ? `${oembedTitle} ${oembedArtist}` : oembedTitle
+  );
   let itunesData = { results: [] };
   try {
     itunesData = await fetch(
@@ -260,7 +267,7 @@ async function lookupBySpotifyId(spotifyId) {
     console.warn('[iTunes search failed]', e.message);
   }
 
-  const best = bestMatch(itunesData.results, oembedTitle);
+  const best = bestMatch(itunesData.results, oembedTitle, oembedArtist);
 
   // High-res artwork
   const artwork = best?.artworkUrl100
